@@ -10,3 +10,42 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
+# CLion 관련 설정 파일
+.idea/
+
+# CMake 빌드 디렉토리
+cmake-build-*/
+
+# 빌드 출력 디렉토리
+build/
+bin/
+lib/
+
+# 컴파일된 객체 파일
+*.obj
+*.o
+*.lo
+*.la
+*.al
+*.libs
+*.dll
+*.so
+*.dylib
+*.exe
+*.out
+
+# 예비 컴파일된 헤더
+*.gch
+*.pch
+
+# 로그 및 임시 파일
+*.log
+*.tmp
+*.swp
+
+# 시스템 파일
+.DS_Store
+Thumbs.db
+
+# 기타
+*.cache

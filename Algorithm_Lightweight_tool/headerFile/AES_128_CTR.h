@@ -15,6 +15,13 @@
 #define BLOCKSIZE 16
 #define EXPANDEDKEYSIZE 176
 #define ROUNDNUM 10
+void incrementCounter(uint8_t *counter) {
+    for (int i = 16 - 1; i >= 0; i--) {
+        if (++counter[i] != 0) {
+            break;  // 오버플로가 발생하지 않으면 증가 종료
+        }
+    }
+}
 
 void createRoundKey(unsigned char *expandedKey, unsigned char *roundKey)
 {
@@ -221,8 +228,10 @@ void aes_round(unsigned char *state, unsigned char *roundKey)
     mixColumns(state);
     addRoundKey(state, roundKey);
 }
-char aes_main(unsigned char * state,
-              unsigned char * expandedKey)
+char aes_main_ctr(unsigned char * state,
+              unsigned char * expandedKey,
+              unsigned char * RoundSave,
+              int SaveIndex)
 {
     unsigned char roundKey[BLOCKSIZE];
     createRoundKey(expandedKey , roundKey);
@@ -231,20 +240,52 @@ char aes_main(unsigned char * state,
     {
         createRoundKey(expandedKey + BLOCKSIZE * i , roundKey);
         aes_round(state, roundKey);
+        for(int q = 0;q<4;q++)
+        {
+            for(int k = 0;k<4;k++)
+            {
+                RoundSave[(SaveIndex*160)+((i-1) * 16) + (q * 4) + k] = state[(q * 4) + k];
+            }
+        }
     }
-    createRoundKey(expandedKey + BLOCKSIZE * ROUNDNUM , roundKey);
+    createRoundKey(expandedKey + BLOCKSIZE * ROUNDNUM, roundKey);
     subBytes(state);
     shiftRows(state);
     addRoundKey(state,roundKey);
-}
-void aes_encrypt(unsigned char * input,
-                 unsigned char * output,
-                 unsigned char * key,
-                 unsigned char * counter)
-{
+    for(int q = 0;q<4;q++)
+    {
+        for(int k = 0;k<4;k++)
+        {
+            RoundSave[(SaveIndex*160)+((10-1) * 16) + (k * 4) + q] = state[(q * 4) + k];
+        }
+    }
 
+}
+char aes_main(unsigned char * state,
+              unsigned char * expandedKey)
+{
+    unsigned char roundKey[BLOCKSIZE];
+    createRoundKey(expandedKey, roundKey);
+    addRoundKey(state, roundKey);
+    for(int i = 1; i<ROUNDNUM; i++)
+    {
+        createRoundKey(expandedKey + BLOCKSIZE * i , roundKey);
+        aes_round(state, roundKey);
+    }
+    createRoundKey(expandedKey + BLOCKSIZE * ROUNDNUM, roundKey);
+    subBytes(state);
+    shiftRows(state);
+    addRoundKey(state, roundKey);
+}
+void aes_encrypt_CTR(unsigned char * input,
+                     unsigned char * output,
+                     unsigned char * key,
+                     unsigned char * counter,
+                     unsigned char * RoundSave)
+{
+    int SaveIndex = 0;
     int plainTextLength = BLOCKSIZE;
-    int block_number = (plainTextLength%16 == 0?plainTextLength/BLOCKSIZE : plainTextLength/BLOCKSIZE + 1);
+    int block_number = (plainTextLength%16 == 0?strlen(input)/BLOCKSIZE :   strlen(input)/BLOCKSIZE + 1);
     unsigned char block[10][BLOCKSIZE];
     unsigned char expandedKey[EXPANDEDKEYSIZE];
     unsigned char save_reset[BLOCKSIZE];
@@ -264,11 +305,13 @@ void aes_encrypt(unsigned char * input,
         for(int k = 0; k < 4;k++)
         {
             for(int j = 0;j<4;j++){
-                save_reset[(k + (j *4))] = counter[(k*4) + j];
+                save_reset[(k + (j *4))] = counter[(k * 4) + j];
             }
         }
-        aes_main(save_reset, expandedKey);
+        aes_main_ctr(save_reset, expandedKey,RoundSave,SaveIndex);
         XORBlock(block[i], save_reset, BLOCKSIZE);
+        increment_counter(counter,16);
+        SaveIndex++;
     }
     for(int a = 0;a<block_number;a++)
     {
@@ -279,7 +322,29 @@ void aes_encrypt(unsigned char * input,
         }
     }
 }
+void aes_encrypt_CTR_Testing(unsigned char * input,
+                             unsigned char * output,
+                             unsigned char * key)
+{
+    unsigned char expandedKey[EXPANDEDKEYSIZE];
+    unsigned char block[BLOCKSIZE];
+    unsigned char save_reset[BLOCKSIZE];
+    expandKey(expandedKey, key);
+    for(int j = 0;j<4;j++)
+    {
+        for(int a = 0;a<4;a++)
+        {
+            block[(j + (a * 4))] = input[(j * 4) + a];
+        }
+    }
+    aes_main(block, expandedKey);
 
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            output[(i * 4) + j] = block[(i + (j * 4))];
+        }
+    }
+}
 void invSubBytes(unsigned char * state)
 {
     int i;
@@ -378,7 +443,9 @@ void aes_invMain(unsigned char *state, unsigned char * expandedKey)
 char aes_decrypt(unsigned char * input,
                  unsigned char * output,
                  unsigned char * key,
-                 unsigned char * counter) {
+                 unsigned char * counter,
+                 unsigned char * RoundSave
+                 ) {
     int inputLength = BLOCKSIZE;
     int block_number = (inputLength % 16 == 0 ? inputLength / BLOCKSIZE : inputLength / BLOCKSIZE + 1);
     unsigned char block[10][BLOCKSIZE];
@@ -398,7 +465,7 @@ char aes_decrypt(unsigned char * input,
                 save_reset[(k + (j * 4))] = counter[(k * 4) + j];
             }
         }
-        aes_main(save_reset, expandedKey);
+        aes_main_ctr(   save_reset, expandedKey,RoundSave,0);
         XORBlock(block[i], save_reset, BLOCKSIZE);
     }
     for (int a = 0; a < block_number; a++) {
